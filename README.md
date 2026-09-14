@@ -2,7 +2,7 @@
 
 > **Experimental fork:** This branch develops
 > [DSpark decoding across pipeline stages for DeepSeek V4.1](docs/features/speculative_decoding/dspark_pipeline_parallel.md).
-> Hardware qualification is in progress. It is not an upstream-supported release.
+> Full-model qualification has not passed. It is not an upstream-supported release.
 
 <p align="center">
   <picture>

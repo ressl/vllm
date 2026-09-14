@@ -49,7 +49,8 @@ that the same capacity is available with DSpark.
 
 ## Validation on September 14, 2026
 
-The focused tests cover configuration, checkpoint embedding loading, request-slot
+18 CPU tests and six GPU input-batch tests passed. The focused tests cover
+configuration, checkpoint embedding loading, request-slot
 reuse, padding of sampled tokens, and GPU rejection/draft-state updates. The
 padding regression reproduces mismatched collective sizes before the fix and
 passes after it. The GPU update tests pass both with draft tokens and without
