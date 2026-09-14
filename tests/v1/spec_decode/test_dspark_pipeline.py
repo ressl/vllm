@@ -5,6 +5,8 @@
 from types import SimpleNamespace
 
 import pytest
+import torch
+from torch import nn
 
 from vllm.config import ParallelConfig, SpeculativeConfig
 from vllm.v1.worker.gpu.spec_decode.dspark.utils import validate_dspark_pipeline_config
@@ -66,3 +68,33 @@ def test_draft_parallel_config_retains_tp_without_partitioning_the_draft():
     assert draft.world_size == 2
     assert target.pipeline_parallel_size == 3
     assert target.world_size == 6
+
+
+@pytest.mark.parametrize("include_embedding", [True, False])
+def test_pipeline_draft_requires_real_embedding_weights(monkeypatch, include_embedding):
+    """The last stage must load a real embedding, never a PP placeholder."""
+    from vllm.models.deepseek_v4_1.nvidia import dspark
+
+    draft = dspark.DSparkDeepseekV4ForCausalLM.__new__(
+        dspark.DSparkDeepseekV4ForCausalLM
+    )
+    nn.Module.__init__(draft)
+    draft.config = SimpleNamespace(n_routed_experts=1, num_attention_heads=2)
+    draft.model = nn.Module()
+    draft.model.layers = [SimpleNamespace(ffn=SimpleNamespace(use_mega_moe=True))]
+    draft.model.embed_tokens = nn.Embedding(4, 3)
+    draft.model.confidence_head = None
+    draft.has_own_embed_tokens = True
+    draft.pad_shared_expert = False
+    monkeypatch.setattr(dspark, "get_tensor_model_parallel_world_size", lambda: 1)
+    monkeypatch.setattr(dspark, "get_tensor_model_parallel_rank", lambda: 0)
+    monkeypatch.setattr(draft, "process_weights_after_loading", lambda: None)
+    weight = torch.arange(12, dtype=torch.float32).reshape(4, 3)
+
+    if include_embedding:
+        loaded = draft.load_weights([("embed.weight", weight)])
+        assert loaded == {"model.embed_tokens.weight"}
+        torch.testing.assert_close(draft.model.embed_tokens.weight, weight)
+    else:
+        with pytest.raises(ValueError, match="draft embedding was not loaded"):
+            draft.load_weights([])

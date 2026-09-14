@@ -1,4 +1,9 @@
 <!-- markdownlint-disable MD001 MD041 -->
+
+> **Experimental fork:** This branch develops
+> [DSpark decoding across pipeline stages for DeepSeek V4.1](docs/features/speculative_decoding/dspark_pipeline_parallel.md).
+> Hardware qualification is in progress. It is not an upstream-supported release.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vllm-project/vllm/main/docs/assets/logos/vllm-logo-text-dark.png">
