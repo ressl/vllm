@@ -551,12 +551,24 @@ def _post_update_kernel(
     all_token_ids_ptr,
     all_token_ids_stride,
     total_len_ptr,
+    draft_tokens_ptr,
+    draft_tokens_stride,
+    req_draft_tokens_ptr,
+    req_draft_tokens_stride,
+    NUM_DRAFT_TOKENS: tl.constexpr,
 ):
     req_id = tl.program_id(0)
     req_state_idx = tl.load(idx_mapping_ptr + req_id)
     if req_state_idx < 0:
         # Filter rows with negative index entries.
         return
+
+    for i in range(NUM_DRAFT_TOKENS):
+        draft_token = tl.load(draft_tokens_ptr + req_id * draft_tokens_stride + i)
+        tl.store(
+            req_draft_tokens_ptr + req_state_idx * req_draft_tokens_stride + i,
+            draft_token,
+        )
 
     total_len = tl.load(total_len_ptr + req_state_idx)
     num_sampled = tl.load(num_sampled_ptr + req_id)
@@ -618,7 +630,12 @@ def post_update(
     all_token_ids: torch.Tensor,
     # [max_num_reqs]
     total_len: torch.Tensor,
+    draft_tokens: torch.Tensor | None = None,
+    req_draft_tokens: torch.Tensor | None = None,
 ) -> None:
+    if draft_tokens is not None:
+        assert req_draft_tokens is not None
+        assert draft_tokens.shape == (idx_mapping.shape[0], req_draft_tokens.shape[1])
     num_reqs = idx_mapping.shape[0]
     _post_update_kernel[(num_reqs,)](
         idx_mapping,
@@ -634,6 +651,11 @@ def post_update(
         all_token_ids,
         all_token_ids.stride(0),
         total_len,
+        draft_tokens,
+        draft_tokens.stride(0) if draft_tokens is not None else 0,
+        req_draft_tokens,
+        req_draft_tokens.stride(0) if req_draft_tokens is not None else 0,
+        draft_tokens.shape[1] if draft_tokens is not None else 0,
         num_warps=1,
     )
 

@@ -268,8 +268,14 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                 "extract_hidden_states",
             ):
                 # Drafting may require auxiliary hidden states from target model outputs
-                self.use_aux_hidden_state_outputs = True
-                if self.use_pp:
+                self.use_aux_hidden_state_outputs = self.is_last_pp_rank
+                if self.use_pp and self.speculative_config.method == "dspark":
+                    from vllm.v1.worker.gpu.spec_decode.dspark.utils import (
+                        validate_dspark_pipeline_config,
+                    )
+
+                    validate_dspark_pipeline_config(self.vllm_config)
+                elif self.use_pp:
                     raise ValueError(
                         f"{self.speculative_config.method} with pipeline parallel "
                         "is not supported."
@@ -1497,6 +1503,7 @@ class GPUModelRunner(LoRAModelRunnerMixin):
         num_sampled: torch.Tensor,
         num_rejected: torch.Tensor,
         query_start_loc: torch.Tensor | None = None,
+        draft_tokens: torch.Tensor | None = None,
     ) -> None:
         # Update the number of computed tokens.
         if self.is_last_pp_rank:
@@ -1515,6 +1522,8 @@ class GPUModelRunner(LoRAModelRunnerMixin):
             query_start_loc,
             self.req_states.all_token_ids.gpu,
             self.req_states.total_len.gpu,
+            draft_tokens=draft_tokens,
+            req_draft_tokens=self.req_states.draft_tokens,
         )
 
         self.model_state.postprocess_state(
@@ -1882,7 +1891,7 @@ class GPUModelRunner(LoRAModelRunnerMixin):
             hidden_states, input_batch, grammar_output
         )
 
-        if self.pp_handler is not None:
+        if self.pp_handler is not None and self.num_speculative_steps == 0:
             # Broadcast to non-last PP ranks (handles spec decode multi-token).
             self.pp_handler.broadcast(
                 sampler_output.sampled_token_ids,
@@ -1977,6 +1986,16 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                 self.adaptive_verification.record_confidences(
                     self.speculator.draft_token_confidence_probs, input_batch
                 )
+
+        if self.pp_handler is not None and self.num_speculative_steps > 0:
+            # The next verification must use identical drafts on every stage.
+            self.pp_handler.broadcast(
+                sampler_output.sampled_token_ids,
+                num_sampled,
+                num_rejected,
+                input_batch,
+                draft_tokens=self.req_states.draft_tokens[input_batch.idx_mapping],
+            )
 
         if self.num_speculative_steps > 0:
             # Spec-decode and diffusion LLMs both use draft tokens but the latter does

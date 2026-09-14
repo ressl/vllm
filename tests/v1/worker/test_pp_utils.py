@@ -2,9 +2,11 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Which rows the PP sampled-token broadcast must carry."""
 
+from collections import deque
 from unittest.mock import Mock
 
 import numpy as np
+import torch
 
 from vllm.v1.worker.gpu import pp_utils
 
@@ -81,3 +83,37 @@ def test_decode_row_ahead_of_a_prefill_chunk():
 
     assert mask is not None
     assert mask.tolist() == [True, False]
+
+
+def test_deferred_drafts_exclude_reused_slots_and_unfinished_prefill(monkeypatch):
+    """A late broadcast must not overwrite another request's draft block."""
+    handler = pp_utils.PPHandler.__new__(pp_utils.PPHandler)
+    handler.device = torch.device("cpu")
+    handler.main_stream = Mock()
+    handler.req_idx_gen_np = np.zeros(4, dtype=np.int32)
+    draft_tokens = torch.tensor([[11, 12], [21, 22], [31, 32]])
+    slot = pp_utils.PendingRecv(
+        event=Mock(),
+        sampled_tokens=torch.tensor([[10, -1, -1]] * 3),
+        num_sampled=torch.ones(3, dtype=torch.int32),
+        num_rejected=torch.zeros(3, dtype=torch.int32),
+        idx_mapping=torch.tensor([2, 0, 3]),
+        idx_mapping_np=np.array([2, 0, 3]),
+        need_sampled_mask=np.array([True, True, False]),
+        gen_at_receive_np=np.zeros(3, dtype=np.int32),
+        draft_tokens=draft_tokens,
+    )
+    handler.queue = deque([None, None, slot])
+    handler.on_req_idx_freed(0)
+    monkeypatch.setattr(
+        pp_utils, "async_copy_to_gpu", lambda values, device: torch.from_numpy(values)
+    )
+
+    assert handler.get_prev_sampled_outputs() is None
+    assert handler.get_prev_sampled_outputs() is None
+    outputs = handler.get_prev_sampled_outputs()
+
+    assert outputs["idx_mapping"].tolist() == [2, -1, -1]
+    assert outputs["draft_tokens"] is draft_tokens
+    handler.main_stream.wait_event.assert_called_once_with(slot.event)
+    assert handler.get_prev_sampled_outputs() is None

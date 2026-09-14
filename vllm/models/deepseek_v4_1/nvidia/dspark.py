@@ -19,6 +19,7 @@ import torch.nn as nn
 import vllm.envs as envs
 from vllm.config import VllmConfig, get_current_vllm_config
 from vllm.distributed import (
+    get_pp_group,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
@@ -297,8 +298,7 @@ def _insert_context_kv(
 
 
 class DSparkDeepseekV4ForCausalLM(nn.Module):
-    # Draft weights ship in the target checkpoint (mtp.*) without embed/head, so
-    # load_dspark_model always aliases the target's.
+    # PP uses a local embedding copy; PP1 shares the target embedding and head.
     has_own_embed_tokens = False
     has_own_lm_head = False
     # Full-vocab draft: draft ids are target ids, no remapping needed.
@@ -309,6 +309,7 @@ class DSparkDeepseekV4ForCausalLM(nn.Module):
         assert vllm_config.speculative_config is not None
         self.draft_model_config = vllm_config.speculative_config.draft_model_config
         self.config = self.draft_model_config.hf_config
+        self.has_own_embed_tokens = get_pp_group().world_size > 1
         self.quant_config = vllm_config.quant_config
         self.linear_scale_name = _linear_scale_param_name(
             vllm_config, getattr(self.config, "expert_dtype", "fp4")
@@ -388,8 +389,8 @@ class DSparkDeepseekV4ForCausalLM(nn.Module):
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
         """Load the ``mtp.{0,1,2}.*`` draft weights from the target checkpoint.
 
-        Non-mtp weights (embed/head/main layers) belong to the target model and
-        are skipped here. ``embed_tokens``/``lm_head`` are aliased from the target.
+        Under PP, also load the target embedding into the last stage's drafter.
+        PP1 shares the embedding; all configurations share the local output head.
         """
         first_layer = self.model.layers[0]
         use_mega_moe = first_layer.ffn.use_mega_moe
@@ -511,6 +512,11 @@ class DSparkDeepseekV4ForCausalLM(nn.Module):
 
         if self.model.confidence_head is not None and not loaded_confidence_head:
             self.model.confidence_head = None
+        if (
+            self.has_own_embed_tokens
+            and "model.embed_tokens.weight" not in loaded_params
+        ):
+            raise ValueError("DSpark pipeline draft embedding was not loaded.")
         self.process_weights_after_loading()
         logger.info_once("DSpark draft model loaded: %d params", len(loaded_params))
         return loaded_params
@@ -525,8 +531,10 @@ class DSparkDeepseekV4ForCausalLM(nn.Module):
     def _remap_dspark_name(self, name: str) -> str | None:
         """Map a checkpoint ``mtp.{i}.*`` name to this model's parameter path.
 
-        Returns None for non-mtp weights (owned by the target model).
+        The last pipeline stage also needs the checkpoint's input embedding.
         """
+        if self.has_own_embed_tokens and name == "embed.weight":
+            return "model.embed_tokens.weight"
         m = re.match(r"mtp\.(\d+)\.(.*)", name)
         if m is None:
             return None

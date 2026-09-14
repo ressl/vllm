@@ -5,10 +5,35 @@ import torch.nn as nn
 
 from vllm.config import ModelConfig, VllmConfig, replace
 from vllm.distributed.parallel_state import get_pp_group
+from vllm.distributed.utils import get_pp_indices
 from vllm.logger import init_logger
 from vllm.v1.attention.backends.registry import AttentionBackendEnum
 
 logger = init_logger(__name__)
+
+
+def validate_dspark_pipeline_config(vllm_config: VllmConfig) -> None:
+    """Restrict PP to locally available DeepSeek V4.1 draft inputs."""
+    pp_size = vllm_config.parallel_config.pipeline_parallel_size
+    if pp_size == 1:
+        return
+    spec = vllm_config.speculative_config
+    assert spec is not None
+    config = spec.draft_model_config.hf_config
+    if config.model_type != "deepseek_v41":
+        raise ValueError("DSpark pipeline parallelism requires DeepSeek V4.1.")
+    if spec.enable_adaptive_verification:
+        raise ValueError(
+            "DSpark pipeline parallelism requires enable_adaptive_verification=false."
+        )
+    start, end = get_pp_indices(config.num_hidden_layers, pp_size - 1, pp_size)
+    # V4.1 captures auxiliary streams at idx + 1 == layer_id.
+    layers = config.dspark_target_layer_ids
+    if not layers or any(not start < layer <= end for layer in layers):
+        raise ValueError(
+            "All DSpark auxiliary layers must be on the last pipeline stage: "
+            f"capture IDs {layers}, supported range ({start}, {end}]."
+        )
 
 
 def _resolve_dspark_attention_backend(
@@ -32,6 +57,9 @@ def _resolve_dspark_attention_backend(
 
 
 def load_dspark_model(target_model: nn.Module, vllm_config: VllmConfig) -> nn.Module:
+    validate_dspark_pipeline_config(vllm_config)
+    if not get_pp_group().is_last_rank:
+        raise ValueError("The DSpark drafter must load on the last pipeline stage.")
     speculative_config = vllm_config.speculative_config
     assert speculative_config is not None
     draft_model_config = speculative_config.draft_model_config
@@ -76,9 +104,6 @@ def load_dspark_model(target_model: nn.Module, vllm_config: VllmConfig) -> nn.Mo
             vllm_config=draft_vllm_config, model_config=draft_model_config
         )
 
-    if get_pp_group().world_size != 1:
-        raise NotImplementedError("DSpark does not support pipeline parallelism.")
-
     target_language_model = (
         target_model.get_language_model()
         if hasattr(target_model, "get_language_model")
@@ -91,7 +116,8 @@ def load_dspark_model(target_model: nn.Module, vllm_config: VllmConfig) -> nn.Mo
     target_embed = getattr(target_inner, "embed_tokens", None)
     draft_embed = getattr(draft_inner, "embed_tokens", None)
     if (
-        target_embed is not None
+        get_pp_group().world_size == 1
+        and target_embed is not None
         and draft_model_config.get_vocab_size() <= target_vocab_size
         and _should_share(
             draft_model, "has_own_embed_tokens", draft_embed, target_embed

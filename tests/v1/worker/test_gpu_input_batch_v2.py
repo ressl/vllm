@@ -6,9 +6,40 @@ import pytest
 import torch
 
 from vllm.platforms import current_platform
-from vllm.v1.worker.gpu.input_batch import InputBatch, InputBuffers
+from vllm.v1.worker.gpu.input_batch import InputBatch, InputBuffers, post_update
 
 DEVICE = current_platform.device_type
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires GPU Triton kernels")
+def test_pp_post_update_keeps_drafts_and_rejection_state_in_sync():
+    """A deferred update preserves accepted tokens and skips cancelled slots."""
+    device = "cuda"
+    computed = torch.tensor([10, 20, 30], dtype=torch.int32, device=device)
+    last_sampled = torch.zeros((3, 1), dtype=torch.int64, device=device)
+    all_tokens = torch.full((3, 64), -1, dtype=torch.int32, device=device)
+    total_len = torch.tensor([10, 20, 30], dtype=torch.int32, device=device)
+    req_drafts = torch.full((3, 2), -7, dtype=torch.int64, device=device)
+    post_update(
+        torch.tensor([2, -1, 0], device=device),
+        computed,
+        last_sampled,
+        None,
+        torch.tensor([[11, 12, -1], [21, -1, -1], [31, -1, -1]], device=device),
+        torch.tensor([2, 1, 1], dtype=torch.int32, device=device),
+        torch.tensor([1, 2, 2], dtype=torch.int32, device=device),
+        None,
+        all_tokens,
+        total_len,
+        draft_tokens=torch.tensor([[41, 42], [51, 52], [61, 62]], device=device),
+        req_draft_tokens=req_drafts,
+    )
+    assert computed.tolist() == [8, 20, 29]
+    assert total_len.tolist() == [11, 20, 32]
+    assert last_sampled.flatten().tolist() == [31, 0, 12]
+    assert req_drafts.tolist() == [[61, 62], [-7, -7], [41, 42]]
+    assert all_tokens[2, 30:32].tolist() == [11, 12]
+    assert all_tokens[1].eq(-1).all()
 
 
 @pytest.mark.parametrize(

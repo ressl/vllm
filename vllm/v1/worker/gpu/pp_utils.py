@@ -30,6 +30,7 @@ class PendingRecv:
     # Snapshot of slot generation counters at receive time, used to
     # detect requests aborted since then.
     gen_at_receive_np: np.ndarray  # [num_reqs]
+    draft_tokens: torch.Tensor | None = None  # [num_reqs, num_speculative_steps]
 
 
 def compute_need_sampled_mask(input_batch: InputBatch) -> np.ndarray | None:
@@ -117,6 +118,7 @@ class PPHandler:
             num_sampled=slot.num_sampled,
             num_rejected=slot.num_rejected,
             idx_mapping=idx_mapping,
+            draft_tokens=slot.draft_tokens,
         )
 
     def receive(self, input_batch: InputBatch) -> bool:
@@ -145,6 +147,18 @@ class PPHandler:
             torch.distributed.broadcast(
                 combined, src=self.last_rank, group=self.broadcast_group
             )
+            draft_tokens = None
+            if self.max_sample_len > 1:
+                draft_tokens = torch.empty(
+                    num_reqs,
+                    self.max_sample_len - 1,
+                    dtype=torch.int64,
+                    device=self.device,
+                )
+                torch.distributed.broadcast(
+                    draft_tokens, src=self.last_rank, group=self.broadcast_group
+                )
+                draft_tokens.record_stream(self.main_stream)
             event = self.broadcast_stream.record_event()
             num_sampled, num_rejected = combined.unbind(dim=0)
             # Must record_stream since these were allocated on broadcast stream but
@@ -160,6 +174,7 @@ class PPHandler:
             input_batch.idx_mapping_np,
             need_sampled_mask,
             gen_at_receive_np,
+            draft_tokens,
         )
         return bool(need_sampled_mask.all())
 
@@ -169,6 +184,7 @@ class PPHandler:
         num_sampled: torch.Tensor,
         num_rejected: torch.Tensor,
         input_batch: InputBatch,
+        draft_tokens: torch.Tensor | None = None,
     ) -> None:
         assert self.is_last_rank
         if compute_need_sampled_mask(input_batch) is None:
@@ -176,6 +192,10 @@ class PPHandler:
             return
 
         assert sampled_token_ids.dtype == torch.int64
+        assert (draft_tokens is not None) == (self.max_sample_len > 1)
+        if draft_tokens is not None:
+            assert draft_tokens.shape == (input_batch.num_reqs, self.max_sample_len - 1)
+            assert draft_tokens.dtype == torch.int64
 
         if current_platform.is_xpu():
             self.main_stream.synchronize()
@@ -191,5 +211,12 @@ class PPHandler:
             torch.distributed.broadcast(
                 combined, src=self.last_rank, group=self.broadcast_group
             )
+            if draft_tokens is not None:
+                torch.distributed.broadcast(
+                    draft_tokens.contiguous(),
+                    src=self.last_rank,
+                    group=self.broadcast_group,
+                )
+                draft_tokens.record_stream(self.broadcast_stream)
             for tensor in (sampled_token_ids, num_sampled, num_rejected):
                 tensor.record_stream(self.broadcast_stream)
