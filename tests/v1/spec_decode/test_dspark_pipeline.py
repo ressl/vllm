@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from vllm.config import ParallelConfig, SpeculativeConfig
 from vllm.v1.worker.gpu.spec_decode.dspark.utils import validate_dspark_pipeline_config
 
 
@@ -53,3 +54,15 @@ def test_single_stage_preserves_other_dspark_configurations():
     validate_dspark_pipeline_config(
         _config(pp_size=1, adaptive=True, model_type="qwen3")
     )
+
+
+def test_draft_parallel_config_retains_tp_without_partitioning_the_draft():
+    target = ParallelConfig(tensor_parallel_size=2, pipeline_parallel_size=3)
+    draft = SpeculativeConfig.create_draft_parallel_config(
+        target, 2, pipeline_parallel_size=1
+    )
+    assert draft.tensor_parallel_size == 2
+    assert draft.pipeline_parallel_size == 1
+    assert draft.world_size == 2
+    assert target.pipeline_parallel_size == 3
+    assert target.world_size == 6
