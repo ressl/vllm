@@ -63,6 +63,27 @@ Existing hardware runtime adjustments are documented separately in
 
 ## Focused tests
 
+The test build applies the source changes as an overlay on the existing pinned
+preview runtime. This preserves the hardware runtime patches from the recipes
+repository; it is not a validation of a full rebuild of every upstream component.
+To reproduce an overlay from a clean checkout of this branch:
+
+```bash
+mkdir -p /tmp/dspark-build
+git diff e47aa780bccf59f59dfa2cbb18e17a10b4fe69ba HEAD -- vllm \
+  > /tmp/dspark-build/dspark-pp.patch
+cp tools/dspark_pipeline/overlay.Dockerfile /tmp/dspark-build/Dockerfile
+docker build --platform linux/amd64 \
+  --build-arg BASE_IMAGE=YOUR_EXISTING_PINNED_RUNTIME \
+  -t vllm-dspark-pp:experimental /tmp/dspark-build
+```
+
+Replace `YOUR_EXISTING_PINNED_RUNTIME` with the digest of your working DeepSeek
+V4.1 preview runtime. The runtime needs `patch` and the expected Python package
+layout. Patch application stops on context mismatches. Keep your existing
+hardware configuration and add the speculative configuration above only in an
+isolated test. An experimental patch is not a general compatibility guarantee.
+
 Use an installed vLLM environment matching this preview branch:
 
 ```bash
