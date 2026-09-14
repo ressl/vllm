@@ -3,9 +3,11 @@
 """Which rows the PP sampled-token broadcast must carry."""
 
 from collections import deque
+from contextlib import nullcontext
 from unittest.mock import Mock
 
 import numpy as np
+import pytest
 import torch
 
 from vllm.v1.worker.gpu import pp_utils
@@ -110,6 +112,7 @@ def test_deferred_drafts_exclude_reused_slots_and_unfinished_prefill(monkeypatch
     )
 
     assert handler.get_prev_sampled_outputs() is None
+
     assert handler.get_prev_sampled_outputs() is None
     outputs = handler.get_prev_sampled_outputs()
 
@@ -117,3 +120,37 @@ def test_deferred_drafts_exclude_reused_slots_and_unfinished_prefill(monkeypatch
     assert outputs["draft_tokens"] is draft_tokens
     handler.main_stream.wait_event.assert_called_once_with(slot.event)
     assert handler.get_prev_sampled_outputs() is None
+
+
+@pytest.mark.parametrize("sample_width", [1, 3, 6])
+def test_broadcast_uses_the_receivers_fixed_sample_shape(monkeypatch, sample_width):
+    """Prefill and verification must issue matching NCCL collective sizes."""
+    handler = pp_utils.PPHandler.__new__(pp_utils.PPHandler)
+    handler.is_last_rank = True
+    handler.last_rank = 2
+    handler.max_sample_len = 6
+    handler.main_stream = Mock()
+    handler.broadcast_stream = Mock()
+    handler.broadcast_group = object()
+    sent = []
+    monkeypatch.setattr(torch.cuda, "stream", lambda stream: nullcontext())
+    monkeypatch.setattr(torch.Tensor, "record_stream", lambda self, stream: None)
+    monkeypatch.setattr(pp_utils.current_platform, "is_xpu", lambda: False)
+    monkeypatch.setattr(
+        torch.distributed,
+        "broadcast",
+        lambda tensor, **kwargs: sent.append(tensor.clone()),
+    )
+    samples = torch.arange(2 * sample_width).view(2, sample_width)
+    drafts = torch.arange(10).view(2, 5)
+    handler.broadcast(
+        samples,
+        torch.ones(2, dtype=torch.int32),
+        torch.zeros(2, dtype=torch.int32),
+        _batch([7, 11], [3, 8], [1, 1]),
+        draft_tokens=drafts,
+    )
+    assert [tuple(t.shape) for t in sent] == [(2, 6), (2, 2), (2, 5)]
+    torch.testing.assert_close(sent[0][:, :sample_width], samples)
+    assert sent[0][:, sample_width:].eq(-1).all()
+    torch.testing.assert_close(sent[2], drafts)

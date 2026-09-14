@@ -192,6 +192,16 @@ class PPHandler:
             return
 
         assert sampled_token_ids.dtype == torch.int64
+        # Prefill has one sampled column; rejection sampling has a full block.
+        # Receivers always allocate max_sample_len columns for the collective.
+        assert sampled_token_ids.shape[0] == input_batch.num_reqs
+        assert 0 < sampled_token_ids.shape[1] <= self.max_sample_len
+        if sampled_token_ids.shape[1] < self.max_sample_len:
+            sampled_token_ids = torch.nn.functional.pad(
+                sampled_token_ids,
+                (0, self.max_sample_len - sampled_token_ids.shape[1]),
+                value=-1,
+            )
         assert (draft_tokens is not None) == (self.max_sample_len > 1)
         if draft_tokens is not None:
             assert draft_tokens.shape == (input_batch.num_reqs, self.max_sample_len - 1)
