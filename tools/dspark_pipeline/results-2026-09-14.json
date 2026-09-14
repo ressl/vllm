@@ -1,0 +1,250 @@
+{
+  "date": "2026-09-14",
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "model_revision": "dba1be0a40aa45a94ad051997016db3960a90277",
+  "hardware": {
+    "gpu_count": 6,
+    "gpu": "RTX PRO 6000 Blackwell 96 GB",
+    "pcie_width": 16,
+    "power_limit_watts_per_gpu": 600,
+    "tensor_parallel_size": 2,
+    "pipeline_parallel_size": 3,
+    "layer_partition": [
+      8,
+      12,
+      20
+    ]
+  },
+  "source_commit": "607cc00e8cc5d9c6786a422237391c6cc74c94b1",
+  "upstream_base": "e47aa780bccf59f59dfa2cbb18e17a10b4fe69ba",
+  "benchmark_tool": "https://github.com/ressl/llm-inference-recipes/blob/92c615594fcc9aed16afb4b05328f55ed24962da/tools/benchmark_concurrency.py",
+  "dspark_configuration": {
+    "num_speculative_tokens": 5,
+    "draft_sample_method": "probabilistic",
+    "rejection_sample_method": "block",
+    "enable_adaptive_verification": false,
+    "max_model_len": 1048576,
+    "max_num_seqs": 24,
+    "max_num_batched_tokens": 1536,
+    "kv_cache_memory_bytes": 2147483648,
+    "cudagraph_capture_sizes": [
+      6,
+      12,
+      24,
+      48,
+      96,
+      144
+    ],
+    "cpu_offload_gb": 0
+  },
+  "baseline": {
+    "c1": {
+      "concurrency": 1,
+      "prompt_tokens": 1024,
+      "output_tokens": 1024,
+      "shared_prefix": false,
+      "fixture_seed": 42,
+      "elapsed_s": 10.110270791919902,
+      "aggregate_output_tokens_per_second": 101.28314276392851,
+      "median_stream_decode_tokens_per_second": 103.84535386392415,
+      "median_ttft_s": 0.25543879088945687,
+      "maximum_running": 1.0,
+      "maximum_waiting": 0.0,
+      "maximum_cache_usage": 0.0036961681926076517,
+      "metrics_delta": {
+        "prefix_cache_hits_total": 0.0,
+        "generation_tokens_total": 1024.0,
+        "request_success_total": 1.0,
+        "request_decode_time_seconds_sum": 9.864353746001143,
+        "preemptions": 0.0
+      }
+    },
+    "c24": {
+      "concurrency": 24,
+      "prompt_tokens": 1024,
+      "output_tokens": 1024,
+      "shared_prefix": false,
+      "fixture_seed": 42,
+      "elapsed_s": 49.730968750081956,
+      "aggregate_output_tokens_per_second": 494.1789918371437,
+      "median_stream_decode_tokens_per_second": 21.290866871383805,
+      "median_ttft_s": 1.6309077920159325,
+      "maximum_running": 24.0,
+      "maximum_waiting": 19.0,
+      "maximum_cache_usage": 0.13689386232621226,
+      "metrics_delta": {
+        "prefix_cache_hits_total": 0.0,
+        "generation_tokens_total": 24576.0,
+        "request_success_total": 24.0,
+        "request_decode_time_seconds_sum": 1153.3782999540563,
+        "preemptions": 0.0
+      }
+    }
+  },
+  "diagnostic_build": {
+    "c1": {
+      "concurrency": 1,
+      "prompt_tokens": 1024,
+      "output_tokens": 1024,
+      "shared_prefix": false,
+      "fixture_seed": 42,
+      "elapsed_s": 3.7759547499008477,
+      "aggregate_output_tokens_per_second": 271.1896905085764,
+      "median_stream_decode_tokens_per_second": 290.1404263313758,
+      "median_ttft_s": 0.24657783401198685,
+      "maximum_running": 1.0,
+      "maximum_waiting": 0.0,
+      "maximum_cache_usage": 0.00474231117930124,
+      "metrics_delta": {
+        "prefix_cache_hits_total": 0.0,
+        "generation_tokens_total": 1024.0,
+        "request_success_total": 1.0,
+        "request_decode_time_seconds_sum": 3.5277400040067732,
+        "preemptions": 0.0
+      }
+    },
+    "c8": {
+      "concurrency": 8,
+      "prompt_tokens": 1024,
+      "output_tokens": 1024,
+      "shared_prefix": false,
+      "fixture_seed": 42,
+      "elapsed_s": 20.767154457978904,
+      "aggregate_output_tokens_per_second": 394.46906491575544,
+      "median_stream_decode_tokens_per_second": 52.03673652082033,
+      "median_ttft_s": 0.9080340205691755,
+      "maximum_running": 8.0,
+      "maximum_waiting": 4.0,
+      "maximum_cache_usage": 0.08654717902224707,
+      "metrics_delta": {
+        "prefix_cache_hits_total": 0.0,
+        "generation_tokens_total": 8192.0,
+        "request_success_total": 8.0,
+        "request_decode_time_seconds_sum": 155.40858028299408,
+        "preemptions": 0.0
+      }
+    },
+    "c24": {
+      "concurrency": 24,
+      "prompt_tokens": 1024,
+      "output_tokens": 1024,
+      "shared_prefix": false,
+      "fixture_seed": 42,
+      "elapsed_s": 33.69846858410165,
+      "aggregate_output_tokens_per_second": 729.2913011362934,
+      "median_stream_decode_tokens_per_second": 33.20087763756385,
+      "median_ttft_s": 1.6942414789227769,
+      "maximum_running": 24.0,
+      "maximum_waiting": 17.0,
+      "maximum_cache_usage": 0.16221493828021483,
+      "metrics_delta": {
+        "prefix_cache_hits_total": 0.0,
+        "generation_tokens_total": 24576.0,
+        "request_success_total": 24.0,
+        "request_decode_time_seconds_sum": 736.0108061720384,
+        "preemptions": 0.0
+      }
+    }
+  },
+  "validation": {
+    "text_reasoning_tools_streaming": "passed",
+    "vision_and_mixed_concurrency": "passed",
+    "json_schema": "passed",
+    "four_cancelled_streams_then_24_arithmetic_requests": "passed",
+    "exact_context": {
+      "input_tokens": 1048448,
+      "output_tokens": 128,
+      "seconds": 129.00788054219447,
+      "three_record_recall": "passed",
+      "ignore_eos": true
+    }
+  },
+  "limitations": [
+    "Single retained baseline and initial candidate runs; no confidence intervals.",
+    "Synthetic context recall does not establish general model quality.",
+    "All request slots share one KV cache pool.",
+    "This validates an overlay on the pinned preview dependencies, not an upstream full rebuild.",
+    "Greedy response hashes differed across runs. Bitwise reproducibility and broad accuracy parity were not established."
+  ],
+  "final_build": {
+    "c1": {
+      "concurrency": 1,
+      "prompt_tokens": 1024,
+      "output_tokens": 1024,
+      "shared_prefix": false,
+      "fixture_seed": 42,
+      "elapsed_s": 3.8222551660146564,
+      "aggregate_output_tokens_per_second": 267.9046676697129,
+      "median_stream_decode_tokens_per_second": 285.5189425128505,
+      "median_ttft_s": 0.2390558330807835,
+      "maximum_running": 1.0,
+      "maximum_waiting": 0.0,
+      "maximum_cache_usage": 0.004777181114443141,
+      "metrics_delta": {
+        "prefix_cache_hits_total": 0.0,
+        "generation_tokens_total": 1024.0,
+        "request_success_total": 1.0,
+        "request_decode_time_seconds_sum": 3.584995807002997,
+        "preemptions": 0.0
+      }
+    },
+    "c8": {
+      "concurrency": 8,
+      "prompt_tokens": 1024,
+      "output_tokens": 1024,
+      "shared_prefix": false,
+      "fixture_seed": 42,
+      "elapsed_s": 21.378223875071853,
+      "aggregate_output_tokens_per_second": 383.1936669702626,
+      "median_stream_decode_tokens_per_second": 51.555914299806446,
+      "median_ttft_s": 0.8822106040315703,
+      "maximum_running": 8.0,
+      "maximum_waiting": 1.0,
+      "maximum_cache_usage": 0.08654717902224707,
+      "metrics_delta": {
+        "prefix_cache_hits_total": 0.0,
+        "generation_tokens_total": 8192.0,
+        "request_success_total": 8.0,
+        "request_decode_time_seconds_sum": 156.2335359430581,
+        "preemptions": 0.0
+      }
+    },
+    "c24": {
+      "concurrency": 24,
+      "prompt_tokens": 1024,
+      "output_tokens": 1024,
+      "shared_prefix": false,
+      "fixture_seed": 42,
+      "elapsed_s": 33.87022374989465,
+      "aggregate_output_tokens_per_second": 725.5930808569412,
+      "median_stream_decode_tokens_per_second": 33.36742875900771,
+      "median_ttft_s": 1.6405740829650313,
+      "maximum_running": 24.0,
+      "maximum_waiting": 16.0,
+      "maximum_cache_usage": 0.15921612385800965,
+      "metrics_delta": {
+        "prefix_cache_hits_total": 0.0,
+        "generation_tokens_total": 24576.0,
+        "request_success_total": 24.0,
+        "request_decode_time_seconds_sum": 735.1713831719826,
+        "preemptions": 0.0
+      }
+    }
+  },
+  "final_validation": {
+    "text_reasoning_tools_streaming": "passed",
+    "vision_and_mixed_concurrency": "passed",
+    "json_schema": "passed",
+    "sampled_generation_temperature": 0.7,
+    "sampled_generation": "passed",
+    "four_cancelled_streams_then_24_arithmetic_requests": "passed",
+    "queue_drained": "passed",
+    "exact_context": {
+      "input_tokens": 1048448,
+      "output_tokens": 128,
+      "seconds": 132.8592550829053,
+      "three_record_recall": "passed",
+      "ignore_eos": true
+    }
+  }
+}
