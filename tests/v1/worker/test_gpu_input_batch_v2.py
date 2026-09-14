@@ -12,7 +12,8 @@ DEVICE = current_platform.device_type
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires GPU Triton kernels")
-def test_pp_post_update_keeps_drafts_and_rejection_state_in_sync():
+@pytest.mark.parametrize("with_drafts", [False, True])
+def test_pp_post_update_keeps_drafts_and_rejection_state_in_sync(with_drafts):
     """A deferred update preserves accepted tokens and skips cancelled slots."""
     device = "cuda"
     computed = torch.tensor([10, 20, 30], dtype=torch.int32, device=device)
@@ -31,13 +32,18 @@ def test_pp_post_update_keeps_drafts_and_rejection_state_in_sync():
         None,
         all_tokens,
         total_len,
-        draft_tokens=torch.tensor([[41, 42], [51, 52], [61, 62]], device=device),
+        draft_tokens=(
+            torch.tensor([[41, 42], [51, 52], [61, 62]], device=device)
+            if with_drafts
+            else None
+        ),
         req_draft_tokens=req_drafts,
     )
     assert computed.tolist() == [8, 20, 29]
     assert total_len.tolist() == [11, 20, 32]
     assert last_sampled.flatten().tolist() == [31, 0, 12]
-    assert req_drafts.tolist() == [[61, 62], [-7, -7], [41, 42]]
+    expected_drafts = [[61, 62], [-7, -7], [41, 42]] if with_drafts else [[-7, -7]] * 3
+    assert req_drafts.tolist() == expected_drafts
     assert all_tokens[2, 30:32].tolist() == [11, 12]
     assert all_tokens[1].eq(-1).all()
 

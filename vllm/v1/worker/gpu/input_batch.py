@@ -563,12 +563,13 @@ def _post_update_kernel(
         # Filter rows with negative index entries.
         return
 
-    for i in range(NUM_DRAFT_TOKENS):
-        draft_token = tl.load(draft_tokens_ptr + req_id * draft_tokens_stride + i)
-        tl.store(
-            req_draft_tokens_ptr + req_state_idx * req_draft_tokens_stride + i,
-            draft_token,
-        )
+    if draft_tokens_ptr is not None:
+        for i in range(NUM_DRAFT_TOKENS):
+            draft_token = tl.load(draft_tokens_ptr + req_id * draft_tokens_stride + i)
+            tl.store(
+                req_draft_tokens_ptr + req_state_idx * req_draft_tokens_stride + i,
+                draft_token,
+            )
 
     total_len = tl.load(total_len_ptr + req_state_idx)
     num_sampled = tl.load(num_sampled_ptr + req_id)
